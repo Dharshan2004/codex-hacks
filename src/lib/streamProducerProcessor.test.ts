@@ -56,6 +56,7 @@ function createFakeSupabase(initialRows: Rows) {
   const rows: Rows = {
     ai_actions: [],
     comments: [],
+    sales_coach_prompts: [],
     session_memories: [],
     escalations: [],
     ...initialRows,
@@ -63,6 +64,7 @@ function createFakeSupabase(initialRows: Rows) {
   const inserts: Rows = {
     ai_actions: [],
     comments: [],
+    sales_coach_prompts: [],
     session_memories: [],
     escalations: [],
   };
@@ -86,6 +88,7 @@ function createFakeSupabase(initialRows: Rows) {
           return builder;
         }),
         order: vi.fn(() => builder),
+        limit: vi.fn(() => builder),
         insert: vi.fn((payload: Record<string, unknown>) => {
           insertPayload = payload;
           return builder;
@@ -302,5 +305,43 @@ describe("processNewBuyerComment", () => {
     expect(fake.inserts.ai_actions).toEqual([]);
     expect(fake.inserts.comments).toEqual([]);
     expect(fake.inserts.escalations).toEqual([]);
+  });
+
+  it("stores a sales coach prompt for purchase-intent buyer comments", async () => {
+    const { processNewBuyerComment } = await import(
+      "@/lib/streamProducerProcessor"
+    );
+    const purchaseIntentComment: Comment = {
+      ...buyerComment,
+      id: "comment-purchase-intent",
+      body: "How do I checkout with the live voucher?",
+    };
+    const fake = createFakeSupabase({
+      comments: [purchaseIntentComment],
+    });
+    mocks.getServiceSupabase.mockReturnValue(fake.supabase);
+    mocks.runStreamProducerAgent.mockResolvedValue({
+      actionType: "ignore",
+      productId: null,
+      confidence: 0,
+      buyerMessage: null,
+      hostSummary: "Buyer intent is for host coaching, not an auto-reply.",
+      rationaleLabel: "host_coach_candidate",
+      supportingFactIds: [],
+    });
+
+    const result = await processNewBuyerComment(purchaseIntentComment.id);
+
+    expect(result?.decisionActionType).toBe("ignore");
+    expect(fake.inserts.sales_coach_prompts).toEqual([
+      expect.objectContaining({
+        room_id: room.id,
+        trigger_type: "intent",
+        product_id: null,
+        status: "new",
+        prompt_text: expect.stringContaining("How do I checkout"),
+      }),
+    ]);
+    expect(fake.inserts.comments).toEqual([]);
   });
 });
