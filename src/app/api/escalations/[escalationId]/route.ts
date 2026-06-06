@@ -5,8 +5,10 @@ import type { Escalation } from "@/lib/types";
 
 // PATCH /api/escalations/:escalationId
 // Body: { status?: "open" | "answered", hostAnswer?: string }
-// Lets the host mark an escalation as answered/resolved (issue 006). Realtime on
-// `escalations` delivers the change to the host dashboard.
+// Lets the host mark an escalation as answered/resolved (issue 006). When the
+// host provides an answer, it is also posted into the live buyer chat as a host
+// message linked to the buyer's original question. Realtime on `escalations`
+// and `comments` delivers both to all views.
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ escalationId: string }> },
@@ -47,5 +49,41 @@ export async function PATCH(
     );
   }
 
-  return NextResponse.json({ escalation: escalation as Escalation });
+  const resolved = escalation as Escalation;
+
+  // Post the host's answer to the live chat, linked to the buyer's question,
+  // so buyers see the resolution without leaving chat (sender = host).
+  if (status === "answered" && hostAnswer) {
+    const { error: commentError } = await supabase.from("comments").insert({
+      room_id: resolved.room_id,
+      sender_role: "host",
+      buyer_display_name: null,
+      body: hostAnswer,
+      reply_to_comment_id: resolved.source_comment_id,
+    });
+    if (commentError) {
+      // The escalation is already resolved; surface the chat-post failure
+      // without rolling back the resolution.
+      return NextResponse.json(
+        {
+          escalation: resolved,
+          warning: `Resolved, but failed to post to chat: ${commentError.message}`,
+        },
+        { status: 200 },
+      );
+    }
+
+    // Auto-save the host's confirmed answer as session memory (issue 007), so
+    // later similar buyer questions can be answered with higher confidence.
+    // This is stream-scoped and never mutates the seeded catalog.
+    await supabase.from("session_memories").insert({
+      room_id: resolved.room_id,
+      memory_text: hostAnswer,
+      source_event: "host_answer",
+      confidence: 0.9,
+      status: "active",
+    });
+  }
+
+  return NextResponse.json({ escalation: resolved });
 }

@@ -161,10 +161,27 @@ export async function processNewBuyerComment(
       };
     }
 
+    // No-action comments (spam, chatter, unlinked, below-gate) are recorded as
+    // low-priority "ignore" entries so the activity log (issue 010) can show
+    // what the AI chose to skip, without posting anything buyer-facing.
     if (decision.actionType !== "auto_reply") {
+      const { data: ignoreActionRow } = await supabase
+        .from("ai_actions")
+        .insert({
+          room_id: room.id,
+          source_comment_id: comment.id,
+          action_type: "ignore",
+          product_id: decision.productId,
+          confidence: decision.confidence,
+          buyer_message: null,
+          host_summary: decision.hostSummary,
+          rationale_label: decision.rationaleLabel,
+        })
+        .select("*")
+        .single();
       return {
         decisionActionType: decision.actionType,
-        aiAction: null,
+        aiAction: (ignoreActionRow as AiAction) ?? null,
         assistantComment: null,
         escalation: null,
       };

@@ -2,16 +2,22 @@
 
 import { useEffect, useState } from "react";
 
+import { ActivityLog } from "@/components/ActivityLog";
 import { AiActionsPanel } from "@/components/AiActionsPanel";
 import { CameraPreview } from "@/components/CameraPreview";
 import { ChatTranscript } from "@/components/ChatTranscript";
 import { CommentComposer } from "@/components/CommentComposer";
 import { EscalationsPanel } from "@/components/EscalationsPanel";
+import { HostMic } from "@/components/HostMic";
 import { LiveBadge } from "@/components/LiveBadge";
 import { ReservedPanel } from "@/components/ReservedPanel";
+import { SessionMemoryPanel } from "@/components/SessionMemoryPanel";
+import { TranscriptionPanel } from "@/components/TranscriptionPanel";
 import { useRoomAiActions } from "@/components/useRoomAiActions";
 import { useRoomComments } from "@/components/useRoomComments";
 import { useRoomEscalations } from "@/components/useRoomEscalations";
+import { useRoomHostSpeech } from "@/components/useRoomHostSpeech";
+import { useRoomMemories } from "@/components/useRoomMemories";
 import { useRoomState } from "@/components/useRoomState";
 import type { LineupItem, RoomState } from "@/lib/types";
 import { formatPrice, totalStock } from "@/lib/utils";
@@ -26,6 +32,12 @@ export function HostConsole({ state }: { state: RoomState }) {
   const { comments, status } = useRoomComments(room.id);
   const { actions } = useRoomAiActions(room.id);
   const { escalations } = useRoomEscalations(room.id);
+  const { memories } = useRoomMemories(room.id);
+  const { segments } = useRoomHostSpeech(room.id);
+
+  // Shared mic state so the live transcript panel can show in-progress speech.
+  const [interim, setInterim] = useState("");
+  const [micListening, setMicListening] = useState(false);
 
   const [buyerUrl, setBuyerUrl] = useState(`/buyer/${room.buyer_token}`);
   useEffect(() => {
@@ -53,42 +65,38 @@ export function HostConsole({ state }: { state: RoomState }) {
       </header>
 
       <div className="grid gap-4 p-4 lg:grid-cols-[1.3fr_1fr_0.9fr]">
-        {/* Left: camera + AI work surface */}
+        {/* Left: camera + mic + AI work surface */}
         <section className="flex flex-col gap-4">
           <CameraPreview />
+          <HostMic
+            roomId={room.id}
+            onInterimChange={setInterim}
+            onListeningChange={setMicListening}
+          />
+          <TranscriptionPanel
+            segments={segments}
+            interim={interim}
+            listening={micListening}
+          />
 
           <div className="space-y-3">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
               AI work surface
             </h2>
-            <AiActionsPanel
-              actions={actions}
-              lineup={lineup}
-              comments={comments}
-            />
+            <AiActionsPanel actions={actions} lineup={lineup} />
             <EscalationsPanel
               escalations={escalations}
               lineup={lineup}
               comments={comments}
             />
+            <SessionMemoryPanel memories={memories} />
             <ReservedPanel
               icon="💡"
               title="Sales coach"
               issue="009"
               hint="Timely talking points, voucher nudges, and objection handling."
             />
-            <ReservedPanel
-              icon="📋"
-              title="Activity log"
-              issue="010"
-              hint="Compact, timestamped record of auto-post / escalate / ignore / warn."
-            />
-            <ReservedPanel
-              icon="🧠"
-              title="Session memory"
-              issue="007"
-              hint="Facts learned from your answers during this stream."
-            />
+            <ActivityLog actions={actions} comments={comments} />
           </div>
         </section>
 

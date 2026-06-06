@@ -311,7 +311,7 @@ describe("processNewBuyerComment", () => {
     expect(fake.inserts.comments).toEqual([]);
   });
 
-  it("does not persist or post anything when the agent gates the comment", async () => {
+  it("records a low-priority ignore action but posts nothing buyer-facing when the agent gates the comment", async () => {
     const { processNewBuyerComment } = await import(
       "@/lib/streamProducerProcessor"
     );
@@ -331,13 +331,20 @@ describe("processNewBuyerComment", () => {
 
     const result = await processNewBuyerComment(buyerComment.id);
 
-    expect(result).toEqual({
-      decisionActionType: "ignore",
-      aiAction: null,
-      assistantComment: null,
-      escalation: null,
-    });
-    expect(fake.inserts.ai_actions).toEqual([]);
+    expect(result?.decisionActionType).toBe("ignore");
+    // An ignore action is logged (for the activity log, issue 010)...
+    expect(fake.inserts.ai_actions).toEqual([
+      expect.objectContaining({
+        room_id: room.id,
+        source_comment_id: buyerComment.id,
+        action_type: "ignore",
+        buyer_message: null,
+        rationale_label: "below_auto_reply_gate",
+      }),
+    ]);
+    // ...but nothing buyer-facing is posted, and no escalation is created.
+    expect(result?.assistantComment).toBeNull();
+    expect(result?.escalation).toBeNull();
     expect(fake.inserts.comments).toEqual([]);
     expect(fake.inserts.escalations).toEqual([]);
   });

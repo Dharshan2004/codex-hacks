@@ -437,4 +437,26 @@ describe("runStreamProducerAgent", () => {
     expect(JSON.stringify(context)).not.toContain(logitech.name);
     expect(JSON.stringify(context)).not.toContain("glass");
   });
+
+  it("exposes price as a grounding fact so the agent can answer price questions", () => {
+    const sony = catalogProduct({
+      id: "sony",
+      currency: "SGD",
+      price: 559,
+      original_price: 649,
+    });
+
+    const context = buildLinkedProductContext({
+      room,
+      lineup: [lineupItem(sony)],
+      sessionMemories: [],
+    });
+
+    const priceFacts = context.products[0].facts.filter(
+      (f) => f.source === "price",
+    );
+    expect(priceFacts).toHaveLength(1);
+    expect(priceFacts[0].text).toContain("S$559.00");
+    expect(priceFacts[0].text).toContain("649.00");
+  });
 });

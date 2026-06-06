@@ -117,9 +117,25 @@ export interface SessionMemory {
   id: string;
   room_id: string;
   memory_text: string;
-  source_event: string | null;
+  source_event: string | null; // host_answer | host_speech
   confidence: number | null;
   status: SessionMemoryStatus;
+  created_at: string;
+}
+
+export type HostSpeechClassification =
+  | "pending"
+  | "context"
+  | "false_claim"
+  | "chatter";
+
+export interface HostSpeech {
+  id: string;
+  room_id: string;
+  transcript: string;
+  classification: HostSpeechClassification;
+  product_id: string | null;
+  note: string | null;
   created_at: string;
 }
 

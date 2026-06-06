@@ -68,6 +68,7 @@ export interface LinkedProductFact {
   label: string;
   text: string;
   source:
+    | "price"
     | "official_spec"
     | "faq"
     | "seller_note"
@@ -149,6 +150,7 @@ export function buildLinkedProductContext({
         brand: product.brand,
         category: product.category,
         facts: [
+          priceFact(product),
           ...product.official_specs.map((spec, index) =>
             fact(product.id, "official_spec", index, spec.label, spec.value),
           ),
@@ -379,6 +381,31 @@ function textFact(
     label,
     text: text.trim(),
     source,
+  };
+}
+
+function priceFact(product: {
+  id: string;
+  currency: string;
+  price: number;
+  original_price: number | null;
+}): LinkedProductFact {
+  const symbol =
+    product.currency === "SGD"
+      ? "S$"
+      : product.currency === "USD"
+        ? "US$"
+        : `${product.currency} `;
+  const current = `${symbol}${product.price.toFixed(2)}`;
+  const text =
+    product.original_price && product.original_price > product.price
+      ? `${current} (usual price ${symbol}${product.original_price.toFixed(2)})`
+      : current;
+  return {
+    id: `${product.id}:price`,
+    label: "Price",
+    text,
+    source: "price",
   };
 }
 

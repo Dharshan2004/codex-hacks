@@ -86,8 +86,11 @@ export function ChatTranscript({
             ? c.buyer_display_name || "Guest"
             : style.label;
 
+        // AI auto-answers and host escalation answers both link to the buyer
+        // question they address.
         const repliedTo =
-          c.sender_role === "assistant" && c.reply_to_comment_id
+          (c.sender_role === "assistant" || c.sender_role === "host") &&
+          c.reply_to_comment_id
             ? byId.get(c.reply_to_comment_id)
             : null;
 
@@ -105,9 +108,16 @@ export function ChatTranscript({
               </span>
             </div>
 
-            {/* AI reply: show the question it answers */}
+            {/* AI auto-answer or host escalation answer: show the question it
+                answers, themed to the replier's role. */}
             {repliedTo && (
-              <div className="mt-0.5 flex max-w-[85%] items-center gap-1 border-l-2 border-violet-300 pl-2 text-[11px] text-neutral-400">
+              <div
+                className={`mt-0.5 flex max-w-[85%] items-center gap-1 border-l-2 pl-2 text-[11px] text-neutral-400 ${
+                  c.sender_role === "host"
+                    ? "border-shopee/40"
+                    : "border-violet-300"
+                }`}
+              >
                 <span className="font-medium text-neutral-500">
                   {repliedTo.buyer_display_name || "Buyer"}:
                 </span>
