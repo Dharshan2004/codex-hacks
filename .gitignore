@@ -33,3 +33,5 @@ next-env.d.ts.bak
 
 # local dev logs
 .dev.log
+
+graphify-out/
