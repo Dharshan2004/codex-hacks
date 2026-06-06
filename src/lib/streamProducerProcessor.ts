@@ -131,6 +131,36 @@ export async function processNewBuyerComment(
       };
     }
 
+    if (decision.actionType === "warn") {
+      const { data: warnActionRow, error: warnActionError } = await supabase
+        .from("ai_actions")
+        .insert({
+          room_id: room.id,
+          source_comment_id: comment.id,
+          action_type: "warn",
+          product_id: decision.productId,
+          confidence: decision.confidence,
+          buyer_message: null,
+          host_summary: decision.hostSummary,
+          rationale_label: decision.rationaleLabel,
+        })
+        .select("*")
+        .single();
+      if (warnActionError || !warnActionRow) {
+        throw new Error(
+          `Failed to store warn AI action: ${
+            warnActionError?.message ?? "missing row"
+          }`,
+        );
+      }
+      return {
+        decisionActionType: decision.actionType,
+        aiAction: warnActionRow as AiAction,
+        assistantComment: null,
+        escalation: null,
+      };
+    }
+
     if (decision.actionType !== "auto_reply") {
       return {
         decisionActionType: decision.actionType,

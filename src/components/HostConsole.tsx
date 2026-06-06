@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AiActionsPanel } from "@/components/AiActionsPanel";
 import { CameraPreview } from "@/components/CameraPreview";
@@ -27,10 +27,10 @@ export function HostConsole({ state }: { state: RoomState }) {
   const { actions } = useRoomAiActions(room.id);
   const { escalations } = useRoomEscalations(room.id);
 
-  const buyerUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/buyer/${room.buyer_token}`
-      : `/buyer/${room.buyer_token}`;
+  const [buyerUrl, setBuyerUrl] = useState(`/buyer/${room.buyer_token}`);
+  useEffect(() => {
+    setBuyerUrl(`${window.location.origin}/buyer/${room.buyer_token}`);
+  }, [room.buyer_token]);
 
   return (
     <main className="min-h-screen bg-neutral-100">
@@ -61,17 +61,15 @@ export function HostConsole({ state }: { state: RoomState }) {
             <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
               AI work surface
             </h2>
-            <AiActionsPanel actions={actions} lineup={lineup} />
+            <AiActionsPanel
+              actions={actions}
+              lineup={lineup}
+              comments={comments}
+            />
             <EscalationsPanel
               escalations={escalations}
               lineup={lineup}
               comments={comments}
-            />
-            <ReservedPanel
-              icon="🛡️"
-              title="Policy-risk warnings"
-              issue="008"
-              hint="Risky or unsupported claims flagged for your review."
             />
             <ReservedPanel
               icon="💡"

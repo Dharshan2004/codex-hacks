@@ -256,6 +256,44 @@ describe("processNewBuyerComment", () => {
     expect(result?.assistantComment).toBeNull();
   });
 
+  it("persists a warn AI action and posts no buyer-facing answer for a warn decision", async () => {
+    const { processNewBuyerComment } = await import(
+      "@/lib/streamProducerProcessor"
+    );
+    const fake = createFakeSupabase({
+      comments: [buyerComment],
+    });
+    mocks.getServiceSupabase.mockReturnValue(fake.supabase);
+    mocks.runStreamProducerAgent.mockResolvedValue({
+      actionType: "warn",
+      productId: "sony",
+      confidence: 0.9,
+      buyerMessage: null,
+      hostSummary:
+        "Buyer asked about tinnitus relief — avoid medical claims; redirect to noise-cancelling specs instead.",
+      rationaleLabel: "policy_risk:hearing_health",
+      supportingFactIds: [],
+    });
+
+    const result = await processNewBuyerComment(buyerComment.id);
+
+    expect(result?.decisionActionType).toBe("warn");
+    expect(fake.inserts.ai_actions).toEqual([
+      expect.objectContaining({
+        room_id: room.id,
+        source_comment_id: buyerComment.id,
+        action_type: "warn",
+        product_id: "sony",
+        buyer_message: null,
+        rationale_label: "policy_risk:hearing_health",
+      }),
+    ]);
+    // Critically: no buyer-facing assistant message is posted.
+    expect(fake.inserts.comments).toEqual([]);
+    expect(result?.assistantComment).toBeNull();
+    expect(result?.escalation).toBeNull();
+  });
+
   it("does not call the agent again when the source comment already has an AI action", async () => {
     const { processNewBuyerComment } = await import(
       "@/lib/streamProducerProcessor"
