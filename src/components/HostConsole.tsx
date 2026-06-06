@@ -10,7 +10,7 @@ import { CommentComposer } from "@/components/CommentComposer";
 import { EscalationsPanel } from "@/components/EscalationsPanel";
 import { HostMic } from "@/components/HostMic";
 import { LiveBadge } from "@/components/LiveBadge";
-import { ReservedPanel } from "@/components/ReservedPanel";
+import { SalesCoachPanel } from "@/components/SalesCoachPanel";
 import { SessionMemoryPanel } from "@/components/SessionMemoryPanel";
 import { TranscriptionPanel } from "@/components/TranscriptionPanel";
 import { useRoomAiActions } from "@/components/useRoomAiActions";
@@ -18,12 +18,15 @@ import { useRoomComments } from "@/components/useRoomComments";
 import { useRoomEscalations } from "@/components/useRoomEscalations";
 import { useRoomHostSpeech } from "@/components/useRoomHostSpeech";
 import { useRoomMemories } from "@/components/useRoomMemories";
+import { useRoomSalesCoachPrompts } from "@/components/useRoomSalesCoachPrompts";
 import { useRoomState } from "@/components/useRoomState";
 import type { LineupItem, RoomState } from "@/lib/types";
 import { formatPrice, totalStock } from "@/lib/utils";
 
+const SALES_COACH_TIMER_POLL_MS = 60_000;
+
 // Host producer console. Three columns on desktop:
-//  - left: camera preview + AI work surface (reserved for later slices)
+//  - left: camera preview + AI work surface
 //  - center: live chat (realtime) + host composer
 //  - right: product lineup with spotlight control
 export function HostConsole({ state }: { state: RoomState }) {
@@ -34,6 +37,51 @@ export function HostConsole({ state }: { state: RoomState }) {
   const { escalations } = useRoomEscalations(room.id);
   const { memories } = useRoomMemories(room.id);
   const { segments } = useRoomHostSpeech(room.id);
+  const {
+    prompts,
+    status: coachStatus,
+    errorMessage: coachLoadError,
+  } = useRoomSalesCoachPrompts(room.id);
+  const [coachTickError, setCoachTickError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (room.status !== "live") return;
+    let cancelled = false;
+
+    async function tickSalesCoach() {
+      try {
+        const response = await fetch(`/api/rooms/${room.id}/sales-coach/tick`, {
+          method: "POST",
+        });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          throw new Error(payload?.error ?? `HTTP ${response.status}`);
+        }
+        if (!cancelled) setCoachTickError(null);
+      } catch (error) {
+        if (!cancelled) {
+          setCoachTickError(
+            error instanceof Error
+              ? error.message
+              : "Timer cue could not be created.",
+          );
+        }
+      }
+    }
+
+    void tickSalesCoach();
+    const timer = window.setInterval(
+      () => void tickSalesCoach(),
+      SALES_COACH_TIMER_POLL_MS,
+    );
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [room.id, room.status]);
 
   // Shared mic state so the live transcript panel can show in-progress speech.
   const [interim, setInterim] = useState("");
@@ -48,13 +96,15 @@ export function HostConsole({ state }: { state: RoomState }) {
     <main className="min-h-screen bg-neutral-100">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-white px-5 py-3">
         <div className="flex items-center gap-3">
-          <span className="text-xl">🎛️</span>
+          <span className="rounded bg-shopee px-2 py-1 text-[11px] font-bold text-white">
+            LIVE
+          </span>
           <div>
             <h1 className="text-base font-bold text-neutral-900">
               {room.title}
             </h1>
             <p className="text-xs text-neutral-400">
-              Host console · {room.seller_name}
+              Host console - {room.seller_name}
             </p>
           </div>
         </div>
@@ -90,11 +140,11 @@ export function HostConsole({ state }: { state: RoomState }) {
               comments={comments}
             />
             <SessionMemoryPanel memories={memories} />
-            <ReservedPanel
-              icon="💡"
-              title="Sales coach"
-              issue="009"
-              hint="Timely talking points, voucher nudges, and objection handling."
+            <SalesCoachPanel
+              prompts={prompts}
+              lineup={lineup}
+              status={coachStatus}
+              errorMessage={coachLoadError ?? coachTickError}
             />
             <ActivityLog actions={actions} comments={comments} />
           </div>
@@ -117,7 +167,7 @@ export function HostConsole({ state }: { state: RoomState }) {
           <CommentComposer
             roomId={room.id}
             role="host"
-            placeholder="Reply as host…"
+            placeholder="Reply as host..."
           />
         </section>
 
@@ -180,7 +230,7 @@ function LineupRow({
       ].join(" ")}
     >
       <div className="flex items-start gap-2">
-        <span className="text-2xl">{p.image_emoji ?? "📦"}</span>
+        <span className="text-2xl">{p.image_emoji ?? "Box"}</span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-neutral-800">
             {p.name}
@@ -203,7 +253,7 @@ function LineupRow({
             : "border border-neutral-300 text-neutral-600 hover:bg-neutral-50",
         ].join(" ")}
       >
-        {spotlighted ? "★ Spotlighted" : "Spotlight"}
+        {spotlighted ? "Spotlighted" : "Spotlight"}
       </button>
     </div>
   );
@@ -226,7 +276,7 @@ function CopyBuyerLink({ url }: { url: string }) {
       className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
       title={url}
     >
-      {copied ? "✓ Copied buyer link" : "🔗 Copy buyer link"}
+      {copied ? "Copied buyer link" : "Copy buyer link"}
     </button>
   );
 }

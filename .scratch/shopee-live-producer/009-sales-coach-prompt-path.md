@@ -1,6 +1,6 @@
 ---
 title: Sales Coach Prompt Path
-status: ready-for-agent
+status: completed
 labels:
   - ready-for-agent
 type: AFK
@@ -19,13 +19,13 @@ Add host-side Sales Coach prompts as part of the Stream Producer agent system. P
 
 ## Acceptance criteria
 
-- [ ] The host can see sales coach prompts in the producer console.
-- [ ] Repeated buyer questions or concerns can trigger a relevant prompt.
-- [ ] Purchase-intent comments can trigger a relevant prompt.
-- [ ] A timer-based trigger can create a prompt every configured interval during an active stream.
-- [ ] Changing the spotlight product can trigger product-specific talking points.
-- [ ] Sales coach prompts do not fire on every comment.
-- [ ] Tests cover repeated-question, purchase-intent, timer, and spotlight triggers.
+- [x] The host can see sales coach prompts in the producer console.
+- [x] Repeated buyer questions or concerns can trigger a relevant prompt.
+- [x] Purchase-intent comments can trigger a relevant prompt.
+- [x] A timer-based trigger can create a prompt every configured interval during an active stream.
+- [x] Changing the spotlight product can trigger product-specific talking points.
+- [x] Sales coach prompts do not fire on every comment.
+- [x] Tests cover repeated-question, purchase-intent, timer, and spotlight triggers.
 
 ## Blocked by
 

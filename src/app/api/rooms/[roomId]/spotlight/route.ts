@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { maybeCreateSalesCoachPromptForSpotlight } from "@/lib/salesCoachPrompts";
 import { getServiceSupabase } from "@/lib/supabase/server";
 import type { Room } from "@/lib/types";
 
@@ -53,6 +54,15 @@ export async function PATCH(
   }
   if (!room) {
     return NextResponse.json({ error: "Room not found." }, { status: 404 });
+  }
+
+  try {
+    await maybeCreateSalesCoachPromptForSpotlight({
+      room: room as Room,
+      productId,
+    });
+  } catch (promptError) {
+    console.error("Failed to create spotlight sales coach prompt", promptError);
   }
 
   return NextResponse.json({ room: room as Room });

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getLineup, getRoomById } from "@/lib/rooms";
+import { maybeCreateSalesCoachPromptForComment } from "@/lib/salesCoachPrompts";
 import { getServiceSupabase } from "@/lib/supabase/server";
 import { runStreamProducerAgent } from "@/lib/streamProducerAgent";
 import type {
@@ -70,12 +71,22 @@ export async function processNewBuyerComment(
       throw new Error(`Failed to load session memory: ${memoryError.message}`);
     }
 
+    const coachPromptPromise = maybeCreateSalesCoachPromptForComment({
+      room,
+      comment,
+      lineup,
+    }).catch((error) => {
+      console.error("Failed to create comment sales coach prompt", error);
+      return null;
+    });
+
     const decision = await runStreamProducerAgent({
       room,
       comment,
       lineup,
       sessionMemories: (memoryRows ?? []) as SessionMemory[],
     });
+    await coachPromptPromise;
 
     // Low-confidence-but-appropriate product questions become host escalations
     // (issue 006). We record the AI action and an escalation row, but never post

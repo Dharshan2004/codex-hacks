@@ -111,6 +111,24 @@ export interface Escalation {
   created_at: string;
 }
 
+export type SalesCoachTriggerType =
+  | "timer"
+  | "repeated"
+  | "intent"
+  | "spotlight"
+  | "chat";
+export type SalesCoachPromptStatus = "new" | "used" | "dismissed";
+
+export interface SalesCoachPrompt {
+  id: string;
+  room_id: string;
+  trigger_type: SalesCoachTriggerType;
+  product_id: string | null;
+  prompt_text: string;
+  status: SalesCoachPromptStatus;
+  created_at: string;
+}
+
 export type SessionMemoryStatus = "active" | "dismissed";
 
 export interface SessionMemory {
