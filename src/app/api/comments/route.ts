@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { processNewBuyerComment } from "@/lib/streamProducerProcessor";
 import { getServiceSupabase } from "@/lib/supabase/server";
 import type { Comment, SenderRole } from "@/lib/types";
 
@@ -71,6 +72,14 @@ export async function POST(request: Request) {
       { error: insertError?.message ?? "Failed to post comment." },
       { status: 500 },
     );
+  }
+
+  if (role === "buyer") {
+    try {
+      await processNewBuyerComment((comment as Comment).id);
+    } catch (error) {
+      console.error("Stream Producer DeepAgent failed to process comment", error);
+    }
   }
 
   return NextResponse.json({ comment: comment as Comment }, { status: 201 });

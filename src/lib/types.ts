@@ -67,6 +67,39 @@ export interface Comment {
   created_at: string;
 }
 
+export type AiActionType =
+  | "auto_reply"
+  | "escalate"
+  | "warn"
+  | "ignore"
+  | "coach"
+  | "memory";
+
+export interface AiAction {
+  id: string;
+  room_id: string;
+  source_comment_id: string | null;
+  action_type: AiActionType;
+  product_id: string | null;
+  confidence: number | null;
+  buyer_message: string | null;
+  host_summary: string | null;
+  rationale_label: string | null;
+  created_at: string;
+}
+
+export type SessionMemoryStatus = "active" | "dismissed";
+
+export interface SessionMemory {
+  id: string;
+  room_id: string;
+  memory_text: string;
+  source_event: string | null;
+  confidence: number | null;
+  status: SessionMemoryStatus;
+  created_at: string;
+}
+
 // A stream_products row joined with its catalog product — what views render.
 export interface LineupItem extends StreamProduct {
   product: CatalogProduct;

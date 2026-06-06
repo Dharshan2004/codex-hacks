@@ -49,6 +49,8 @@ cp .env.local.example .env.local
 | `NEXT_PUBLIC_SUPABASE_URL` | Project Settings → API | browser + server |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Project Settings → API Keys (`sb_publishable_…`) | browser |
 | `SUPABASE_SECRET_KEY` | Project Settings → API Keys (`sb_secret_…`) | server routes |
+| `OPENAI_API_KEY` | OpenAI platform API key | Stream Producer DeepAgent |
+| `STREAM_PRODUCER_MODEL` | Optional LangChain model string, defaults to `openai:gpt-5.4` | Stream Producer DeepAgent |
 | `SUPABASE_DB_URL` | Project Settings → Database → **Session pooler** URI | `npm run db:push` only |
 
 > Use the **Session pooler** connection string (host like

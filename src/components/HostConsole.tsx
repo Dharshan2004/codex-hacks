@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 
+import { AiActionsPanel } from "@/components/AiActionsPanel";
 import { CameraPreview } from "@/components/CameraPreview";
 import { ChatTranscript } from "@/components/ChatTranscript";
 import { CommentComposer } from "@/components/CommentComposer";
 import { LiveBadge } from "@/components/LiveBadge";
 import { ReservedPanel } from "@/components/ReservedPanel";
+import { useRoomAiActions } from "@/components/useRoomAiActions";
 import { useRoomComments } from "@/components/useRoomComments";
 import { useRoomState } from "@/components/useRoomState";
 import type { LineupItem, RoomState } from "@/lib/types";
@@ -20,6 +22,7 @@ export function HostConsole({ state }: { state: RoomState }) {
   const { lineup } = state;
   const room = useRoomState(state.room);
   const { comments, status } = useRoomComments(room.id);
+  const { actions } = useRoomAiActions(room.id);
 
   const buyerUrl =
     typeof window !== "undefined"
@@ -55,12 +58,7 @@ export function HostConsole({ state }: { state: RoomState }) {
             <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
               AI work surface
             </h2>
-            <ReservedPanel
-              icon="🤖"
-              title="AI actions"
-              issue="004"
-              hint="Auto-posted answers and the action queue will appear here."
-            />
+            <AiActionsPanel actions={actions} lineup={lineup} />
             <ReservedPanel
               icon="⚠️"
               title="Escalations & policy warnings"
