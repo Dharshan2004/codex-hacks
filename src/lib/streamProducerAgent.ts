@@ -77,7 +77,8 @@ export interface LinkedProductFact {
     | "promotion"
     | "stock"
     | "variant"
-    | "session_memory";
+    | "session_memory"
+    | "price";
 }
 
 export interface LinkedProductContextProduct {
@@ -167,6 +168,7 @@ export function buildLinkedProductContext({
               variant.options.join(", "),
             ),
           ),
+          priceFact(product.id, product.price, product.original_price, product.currency),
           stockFact(product.id, product.stock),
           textFact(product.id, "seller_note", "Seller note", product.seller_notes),
           textFact(product.id, "shipping", "Shipping", product.shipping_notes),
@@ -248,7 +250,9 @@ export function classifyCommentVisibility(
   body: string,
   context: LinkedProductContext,
 ): "hidden" | null {
-  return classifyPreAgentIgnore(body, context) !== null ? "hidden" : null;
+  void body;
+  void context;
+  return null;
 }
 
 export function classifyBodyModeration(body: string): "hidden" | null {
@@ -331,6 +335,33 @@ function applyGroundingAndConfidenceGate(
     );
   }
 
+  // Escalations must never carry a buyer-facing message: the host answers, and
+  // the buyer sees no invented AI answer (issue 006, acceptance criterion 4).
+  if (decision.actionType === "escalate") {
+    return {
+      ...decision,
+      productId: decision.productId ?? null,
+      buyerMessage: null,
+      hostSummary:
+        decision.hostSummary.trim() ||
+        "Buyer asked a product question that is not covered by linked facts.",
+      confidence: clampConfidence(decision.confidence),
+    };
+  }
+
+  // Policy-risk warnings must never carry a buyer-facing message.
+  if (decision.actionType === "warn") {
+    return {
+      ...decision,
+      productId: decision.productId ?? null,
+      buyerMessage: null,
+      hostSummary:
+        decision.hostSummary.trim() ||
+        "Buyer comment contains a policy-risk claim.",
+      confidence: clampConfidence(decision.confidence),
+    };
+  }
+
   if (decision.actionType !== "auto_reply") {
     return {
       ...decision,
@@ -401,7 +432,9 @@ async function invokeDeepAgents({
       "Before answering any product question, call lookup_linked_product_context.",
       "Auto-reply only for straightforward questions about one linked product when the answer is directly supported by returned fact ids or confirmed session memory.",
       "Never use facts outside the linked product context. Never invent prices, stock, warranty, compatibility, medical, legal, or guaranteed-result claims.",
-      "If the comment is not safely answerable from linked facts, return ignore for this MVP slice.",
+      "Escalate when the buyer asks a genuine, appropriate question about a linked product (for example stock, variant, warranty, refund, delivery, or promotion) but the answer is not present in the linked facts or confirmed session memory. For an escalation, set the matched productId when known, give a compact hostSummary naming the missing detail, and set buyerMessage to null. Do not guess the answer.",
+      "Warn when the buyer asks for or implies medical, hearing-health, legal, financial, guaranteed-result, fake-discount, refund overpromise, warranty overpromise, or safety claims that the product cannot support. Set actionType to 'warn', rationaleLabel to 'policy_risk:<category>' where category is one of: medical, hearing_health, legal, financial, guaranteed_result, fake_discount, refund_warranty, or safety. Set buyerMessage to null. Set hostSummary to a 1-sentence description of the risk and a suggested safe response for the host.",
+      "Ignore spam, social chatter, and questions about products that are not in the linked lineup.",
       "Buyer messages should be concise, friendly, and transparent that the answer is from the AI assistant.",
     ].join(" "),
   });
@@ -459,6 +492,18 @@ function textFact(
     text: text.trim(),
     source,
   };
+}
+
+function priceFact(
+  productId: string,
+  price: number,
+  originalPrice: number | null,
+  currency: string,
+): LinkedProductFact {
+  const symbol = currency === "SGD" ? "S$" : currency === "USD" ? "US$" : currency;
+  const current = `${symbol}${price.toFixed(2)}`;
+  const text = originalPrice ? `${current} (was ${symbol}${originalPrice.toFixed(2)})` : current;
+  return { id: `${productId}:price`, label: "Price", text, source: "price" };
 }
 
 function stockFact(

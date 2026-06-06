@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import type { SenderRole } from "@/lib/types";
+import type { Comment, SenderRole } from "@/lib/types";
 
 // Posts a comment to a room via the API. Used by the buyer view (role=buyer)
 // and the host console (role=host). The realtime subscription handles showing
@@ -13,12 +13,22 @@ export function CommentComposer({
   displayName,
   placeholder,
   accent = "bg-shopee hover:bg-shopee-dark",
+  onOptimisticComment,
+  onCommentConfirmed,
+  onCommentRejected,
 }: {
   roomId: string;
   role: SenderRole;
   displayName?: string;
   placeholder?: string;
   accent?: string;
+  onOptimisticComment?: (draft: {
+    role: SenderRole;
+    displayName?: string;
+    body: string;
+  }) => string;
+  onCommentConfirmed?: (optimisticId: string, comment: Comment) => void;
+  onCommentRejected?: (optimisticId: string) => void;
 }) {
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -29,6 +39,12 @@ export function CommentComposer({
     if (!text || sending) return;
     setSending(true);
     setError(null);
+    const optimisticId = onOptimisticComment?.({
+      role,
+      displayName,
+      body: text,
+    });
+    setBody("");
     try {
       const res = await fetch("/api/comments", {
         method: "POST",
@@ -37,8 +53,12 @@ export function CommentComposer({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send.");
-      setBody("");
+      if (optimisticId && data.comment) {
+        onCommentConfirmed?.(optimisticId, data.comment as Comment);
+      }
     } catch (err) {
+      if (optimisticId) onCommentRejected?.(optimisticId);
+      setBody(text);
       setError(err instanceof Error ? err.message : "Failed to send.");
     } finally {
       setSending(false);

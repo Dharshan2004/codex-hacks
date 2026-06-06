@@ -45,6 +45,8 @@ const buyerComment: Comment = {
   body: "Does the XM6 support LDAC?",
   language_label: "en",
   moderation_status: "visible",
+  ai_status: "processing",
+  reply_to_comment_id: null,
   created_at: now,
 };
 
@@ -55,18 +57,27 @@ function createFakeSupabase(initialRows: Rows) {
     ai_actions: [],
     comments: [],
     session_memories: [],
+    escalations: [],
     ...initialRows,
   };
   const inserts: Rows = {
     ai_actions: [],
     comments: [],
     session_memories: [],
+    escalations: [],
+  };
+  const updates: Rows = {
+    ai_actions: [],
+    comments: [],
+    session_memories: [],
+    escalations: [],
   };
 
   const supabase = {
     from: vi.fn((table: string) => {
       const filters: Array<[string, unknown]> = [];
       let insertPayload: Record<string, unknown> | null = null;
+      let updatePayload: Record<string, unknown> | null = null;
 
       const builder = {
         select: vi.fn(() => builder),
@@ -77,6 +88,10 @@ function createFakeSupabase(initialRows: Rows) {
         order: vi.fn(() => builder),
         insert: vi.fn((payload: Record<string, unknown>) => {
           insertPayload = payload;
+          return builder;
+        }),
+        update: vi.fn((payload: Record<string, unknown>) => {
+          updatePayload = payload;
           return builder;
         }),
         maybeSingle: vi.fn(async () => ({
@@ -96,13 +111,25 @@ function createFakeSupabase(initialRows: Rows) {
           inserts[table] = [...(inserts[table] ?? []), row];
           return { data: row, error: null };
         }),
+        // An `update(...).eq(...)` chain is awaited directly (no .single()), so
+        // the builder is thenable: applying the update on await.
+        then: (
+          resolve: (value: { data: null; error: null }) => unknown,
+        ) => {
+          if (updatePayload) {
+            const matched = filterRows(rows[table] ?? [], filters);
+            for (const row of matched) Object.assign(row, updatePayload);
+            updates[table] = [...(updates[table] ?? []), updatePayload];
+          }
+          return Promise.resolve({ data: null, error: null }).then(resolve);
+        },
       };
 
       return builder;
     }),
   };
 
-  return { supabase, rows, inserts };
+  return { supabase, rows, inserts, updates };
 }
 
 function filterRows(
@@ -170,9 +197,101 @@ describe("processNewBuyerComment", () => {
         sender_role: "assistant",
         buyer_display_name: null,
         body: expect.stringContaining("LDAC"),
+        // The AI reply is linked to the buyer question it answers.
+        reply_to_comment_id: buyerComment.id,
       }),
     ]);
     expect(result?.assistantComment?.sender_role).toBe("assistant");
+    // The source buyer comment is flipped out of "processing".
+    expect(fake.updates.comments).toEqual([
+      expect.objectContaining({ ai_status: "done" }),
+    ]);
+  });
+
+  it("persists an escalation and posts no buyer-facing answer for an escalate decision", async () => {
+    const { processNewBuyerComment } = await import(
+      "@/lib/streamProducerProcessor"
+    );
+    const fake = createFakeSupabase({
+      comments: [buyerComment],
+    });
+    mocks.getServiceSupabase.mockReturnValue(fake.supabase);
+    mocks.runStreamProducerAgent.mockResolvedValue({
+      actionType: "escalate",
+      productId: "sony",
+      confidence: 0.4,
+      buyerMessage: null,
+      hostSummary: "Buyer asked about blue XM6 stock, not in linked facts.",
+      rationaleLabel: "missing_product_fact",
+      supportingFactIds: [],
+    });
+
+    const result = await processNewBuyerComment(buyerComment.id);
+
+    expect(result?.decisionActionType).toBe("escalate");
+    // An AI action of type escalate is recorded.
+    expect(fake.inserts.ai_actions).toEqual([
+      expect.objectContaining({
+        room_id: room.id,
+        source_comment_id: buyerComment.id,
+        action_type: "escalate",
+        product_id: "sony",
+        buyer_message: null,
+        rationale_label: "missing_product_fact",
+      }),
+    ]);
+    // An escalation row is created with the source comment, product, and reason.
+    expect(fake.inserts.escalations).toEqual([
+      expect.objectContaining({
+        room_id: room.id,
+        source_comment_id: buyerComment.id,
+        product_id: "sony",
+        reason: expect.stringContaining("stock"),
+        status: "open",
+      }),
+    ]);
+    expect(result?.escalation?.status).toBe("open");
+    // Critically: no hallucinated buyer-facing assistant message is posted.
+    expect(fake.inserts.comments).toEqual([]);
+    expect(result?.assistantComment).toBeNull();
+  });
+
+  it("persists a warn AI action and posts no buyer-facing answer for a warn decision", async () => {
+    const { processNewBuyerComment } = await import(
+      "@/lib/streamProducerProcessor"
+    );
+    const fake = createFakeSupabase({
+      comments: [buyerComment],
+    });
+    mocks.getServiceSupabase.mockReturnValue(fake.supabase);
+    mocks.runStreamProducerAgent.mockResolvedValue({
+      actionType: "warn",
+      productId: "sony",
+      confidence: 0.9,
+      buyerMessage: null,
+      hostSummary:
+        "Buyer asked about tinnitus relief — avoid medical claims; redirect to noise-cancelling specs instead.",
+      rationaleLabel: "policy_risk:hearing_health",
+      supportingFactIds: [],
+    });
+
+    const result = await processNewBuyerComment(buyerComment.id);
+
+    expect(result?.decisionActionType).toBe("warn");
+    expect(fake.inserts.ai_actions).toEqual([
+      expect.objectContaining({
+        room_id: room.id,
+        source_comment_id: buyerComment.id,
+        action_type: "warn",
+        product_id: "sony",
+        buyer_message: null,
+        rationale_label: "policy_risk:hearing_health",
+      }),
+    ]);
+    // Critically: no buyer-facing assistant message is posted.
+    expect(fake.inserts.comments).toEqual([]);
+    expect(result?.assistantComment).toBeNull();
+    expect(result?.escalation).toBeNull();
   });
 
   it("does not call the agent again when the source comment already has an AI action", async () => {
@@ -216,8 +335,10 @@ describe("processNewBuyerComment", () => {
       decisionActionType: "ignore",
       aiAction: null,
       assistantComment: null,
+      escalation: null,
     });
     expect(fake.inserts.ai_actions).toEqual([]);
     expect(fake.inserts.comments).toEqual([]);
+    expect(fake.inserts.escalations).toEqual([]);
   });
 });

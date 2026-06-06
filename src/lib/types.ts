@@ -56,6 +56,12 @@ export interface StreamProduct {
 export type SenderRole = "buyer" | "host" | "assistant" | "system";
 export type ModerationStatus = "visible" | "hidden";
 
+// Lifecycle of AI processing for a comment.
+//  none       -> not AI-processed (host/system/assistant messages)
+//  processing -> a buyer comment the DeepAgent is currently working on
+//  done       -> processing finished (replied, ignored, or escalated)
+export type AiStatus = "none" | "processing" | "done";
+
 export interface Comment {
   id: string;
   room_id: string;
@@ -64,6 +70,9 @@ export interface Comment {
   body: string;
   language_label: string | null;
   moderation_status: ModerationStatus;
+  ai_status: AiStatus;
+  // For an assistant reply, the buyer comment it answers (null otherwise).
+  reply_to_comment_id: string | null;
   created_at: string;
 }
 
@@ -85,6 +94,20 @@ export interface AiAction {
   buyer_message: string | null;
   host_summary: string | null;
   rationale_label: string | null;
+  created_at: string;
+}
+
+export type EscalationStatus = "open" | "answered";
+
+export interface Escalation {
+  id: string;
+  room_id: string;
+  source_comment_id: string | null;
+  product_id: string | null;
+  reason: string | null;
+  status: EscalationStatus;
+  host_answer: string | null;
+  resolved_at: string | null;
   created_at: string;
 }
 

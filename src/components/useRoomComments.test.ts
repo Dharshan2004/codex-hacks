@@ -19,6 +19,8 @@ function comment(overrides: Partial<Comment>): Comment {
     body: "Hello",
     language_label: "en",
     moderation_status: "visible",
+    ai_status: "processing",
+    reply_to_comment_id: null,
     created_at: now,
     ...overrides,
   };
@@ -43,6 +45,8 @@ describe("room comment optimistic updates", () => {
       body: "How much is this?",
       language_label: "en",
       moderation_status: "visible",
+      ai_status: "processing",
+      reply_to_comment_id: null,
       created_at: now,
     });
   });

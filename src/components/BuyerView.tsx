@@ -17,7 +17,13 @@ import { generateDemoName } from "@/lib/utils";
 export function BuyerView({ state }: { state: RoomState }) {
   const { lineup } = state;
   const room = useRoomState(state.room);
-  const { comments, status } = useRoomComments(room.id);
+  const {
+    comments,
+    status,
+    addOptimisticComment,
+    confirmOptimisticComment,
+    rejectOptimisticComment,
+  } = useRoomComments(room.id);
   const [name, setName] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
 
@@ -113,6 +119,9 @@ export function BuyerView({ state }: { state: RoomState }) {
           role="buyer"
           displayName={name}
           placeholder="Ask about a product…"
+          onOptimisticComment={addOptimisticComment}
+          onCommentConfirmed={confirmOptimisticComment}
+          onCommentRejected={rejectOptimisticComment}
         />
       </section>
     </main>

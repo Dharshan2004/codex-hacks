@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import type { Comment, SenderRole } from "@/lib/types";
@@ -30,6 +30,8 @@ export function createOptimisticComment({
     body,
     language_label: "en",
     moderation_status: "visible",
+    ai_status: role === "buyer" ? "processing" : "none",
+    reply_to_comment_id: null,
     created_at: createdAt ?? new Date().toISOString(),
   };
 }
@@ -38,14 +40,15 @@ export function appendRoomComments(
   current: Comment[],
   incoming: Comment[],
 ): Comment[] {
-  const seen = new Set(current.map((comment) => comment.id));
-  const next = [...current];
+  const byId = new Map(current.map((comment) => [comment.id, comment]));
   for (const comment of incoming) {
-    if (seen.has(comment.id)) continue;
-    seen.add(comment.id);
-    next.push(comment);
+    if (comment.moderation_status !== "visible") {
+      byId.delete(comment.id);
+      continue;
+    }
+    byId.set(comment.id, comment);
   }
-  return sortComments(next);
+  return sortComments(Array.from(byId.values()));
 }
 
 export function replaceRoomComment(
@@ -53,16 +56,10 @@ export function replaceRoomComment(
   commentId: string,
   replacement: Comment,
 ): Comment[] {
-  const replaced = current.map((comment) =>
-    comment.id === commentId ? replacement : comment,
+  const withoutOld = current.filter(
+    (comment) => comment.id !== commentId && comment.id !== replacement.id,
   );
-  return appendRoomComments(
-    replaced.filter(
-      (comment, index, all) =>
-        all.findIndex((candidate) => candidate.id === comment.id) === index,
-    ),
-    [],
-  );
+  return appendRoomComments(withoutOld, [replacement]);
 }
 
 export function removeRoomComment(
@@ -76,16 +73,14 @@ function sortComments(comments: Comment[]): Comment[] {
   return [...comments].sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
-// Subscribes to a room's comments: loads the existing transcript, then appends
-// new rows via Supabase Realtime. Returns the live-sorted comment list plus a
-// connection status useful for showing a "Live" indicator.
+// Subscribes to a room's comments: loads the existing transcript, then keeps it
+// live via Supabase Realtime. Optimistic helpers let local sender messages show
+// immediately while the API/realtime round trip confirms the server row.
 export function useRoomComments(roomId: string) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [status, setStatus] = useState<"connecting" | "live" | "error">(
     "connecting",
   );
-  // Track seen ids so an optimistic insert + realtime echo don't duplicate.
-  const seen = useRef<Set<string>>(new Set());
 
   const addOptimisticComment = useCallback(
     ({
@@ -103,7 +98,6 @@ export function useRoomComments(roomId: string) {
         displayName,
         body,
       });
-      seen.current.add(comment.id);
       setComments((prev) => appendRoomComments(prev, [comment]));
       return comment.id;
     },
@@ -112,15 +106,12 @@ export function useRoomComments(roomId: string) {
 
   const confirmOptimisticComment = useCallback(
     (optimisticId: string, confirmed: Comment) => {
-      seen.current.delete(optimisticId);
-      seen.current.add(confirmed.id);
       setComments((prev) => replaceRoomComment(prev, optimisticId, confirmed));
     },
     [],
   );
 
   const rejectOptimisticComment = useCallback((optimisticId: string) => {
-    seen.current.delete(optimisticId);
     setComments((prev) => removeRoomComment(prev, optimisticId));
   }, []);
 
@@ -130,13 +121,7 @@ export function useRoomComments(roomId: string) {
     let cancelled = false;
 
     const upsert = (incoming: Comment[]) => {
-      setComments((prev) => {
-        for (const c of incoming) {
-          if (seen.current.has(c.id)) continue;
-          seen.current.add(c.id);
-        }
-        return appendRoomComments(prev, incoming);
-      });
+      setComments((prev) => appendRoomComments(prev, incoming));
     };
 
     (async () => {
@@ -159,15 +144,14 @@ export function useRoomComments(roomId: string) {
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "comments",
           filter: `room_id=eq.${roomId}`,
         },
         (payload) => {
-          const c = payload.new as Comment;
-          if (c.moderation_status !== "visible") return;
-          upsert([c]);
+          if (payload.eventType === "DELETE") return;
+          upsert([payload.new as Comment]);
         },
       )
       .subscribe((channelStatus) => {

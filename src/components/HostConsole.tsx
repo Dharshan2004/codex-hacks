@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AiActionsPanel } from "@/components/AiActionsPanel";
 import { CameraPreview } from "@/components/CameraPreview";
 import { ChatTranscript } from "@/components/ChatTranscript";
 import { CommentComposer } from "@/components/CommentComposer";
+import { EscalationsPanel } from "@/components/EscalationsPanel";
 import { LiveBadge } from "@/components/LiveBadge";
 import { ReservedPanel } from "@/components/ReservedPanel";
 import { useRoomAiActions } from "@/components/useRoomAiActions";
 import { useRoomComments } from "@/components/useRoomComments";
+import { useRoomEscalations } from "@/components/useRoomEscalations";
 import { useRoomState } from "@/components/useRoomState";
 import type { LineupItem, RoomState } from "@/lib/types";
 import { formatPrice, totalStock } from "@/lib/utils";
@@ -21,13 +23,20 @@ import { formatPrice, totalStock } from "@/lib/utils";
 export function HostConsole({ state }: { state: RoomState }) {
   const { lineup } = state;
   const room = useRoomState(state.room);
-  const { comments, status } = useRoomComments(room.id);
+  const {
+    comments,
+    status,
+    addOptimisticComment,
+    confirmOptimisticComment,
+    rejectOptimisticComment,
+  } = useRoomComments(room.id);
   const { actions } = useRoomAiActions(room.id);
+  const { escalations } = useRoomEscalations(room.id);
 
-  const buyerUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/buyer/${room.buyer_token}`
-      : `/buyer/${room.buyer_token}`;
+  const [buyerUrl, setBuyerUrl] = useState(`/buyer/${room.buyer_token}`);
+  useEffect(() => {
+    setBuyerUrl(`${window.location.origin}/buyer/${room.buyer_token}`);
+  }, [room.buyer_token]);
 
   return (
     <main className="min-h-screen bg-neutral-100">
@@ -58,14 +67,17 @@ export function HostConsole({ state }: { state: RoomState }) {
             <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
               AI work surface
             </h2>
-            <AiActionsPanel actions={actions} lineup={lineup} />
-            <ReservedPanel
-              icon="⚠️"
-              title="Escalations & policy warnings"
-              issue="006 · 008"
-              hint="Questions needing your confirmation and risky-claim warnings."
+            <AiActionsPanel
+              actions={actions}
+              lineup={lineup}
+              comments={comments}
             />
-            <ReservedPanel
+            <EscalationsPanel
+              escalations={escalations}
+              lineup={lineup}
+              comments={comments}
+            />
+<ReservedPanel
               icon="💡"
               title="Sales coach"
               issue="009"
@@ -104,6 +116,9 @@ export function HostConsole({ state }: { state: RoomState }) {
             roomId={room.id}
             role="host"
             placeholder="Reply as host…"
+            onOptimisticComment={addOptimisticComment}
+            onCommentConfirmed={confirmOptimisticComment}
+            onCommentRejected={rejectOptimisticComment}
           />
         </section>
 

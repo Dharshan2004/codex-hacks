@@ -1,13 +1,8 @@
 import { after, NextResponse } from "next/server";
 
-import {
-  buildLinkedProductContext,
-  classifyCommentVisibility,
-} from "@/lib/streamProducerAgent";
 import { processNewBuyerComment } from "@/lib/streamProducerProcessor";
-import { getLineup } from "@/lib/rooms";
 import { getServiceSupabase } from "@/lib/supabase/server";
-import type { Comment, ModerationStatus, Room, SenderRole } from "@/lib/types";
+import type { Comment, ModerationStatus, SenderRole } from "@/lib/types";
 
 const MAX_BODY_LENGTH = 500;
 
@@ -62,16 +57,10 @@ export async function POST(request: Request) {
   const displayName =
     role === "buyer" ? (payload.displayName || "Guest").slice(0, 40) : null;
 
-  let moderationStatus: ModerationStatus = "visible";
-  if (role === "buyer") {
-    const lineup = await getLineup(roomId);
-    const context = buildLinkedProductContext({
-      room: room as Room,
-      lineup,
-      sessionMemories: [],
-    });
-    moderationStatus = classifyCommentVisibility(text, context) ?? "visible";
-  }
+  const moderationStatus: ModerationStatus = "visible";
+
+  const aiStatus =
+    role === "buyer" && moderationStatus === "visible" ? "processing" : "none";
 
   const { data: comment, error: insertError } = await supabase
     .from("comments")
@@ -81,6 +70,7 @@ export async function POST(request: Request) {
       buyer_display_name: displayName,
       body: text,
       moderation_status: moderationStatus,
+      ai_status: aiStatus,
     })
     .select("*")
     .single();
@@ -91,7 +81,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (role === "buyer") {
+  if (role === "buyer" && moderationStatus === "visible") {
     const commentId = (comment as Comment).id;
     after(async () => {
       try {
