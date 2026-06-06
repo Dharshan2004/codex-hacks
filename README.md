@@ -4,7 +4,7 @@ AI live-producer demo for Shopee Live, built for the Sea X Codex Hackathon.
 A seller links products into a stream lineup, then a **host console** and a
 **buyer view** share one live room in real time.
 
-This repo currently implements the first three slices:
+Slices implemented so far:
 
 - **001 — Bootstrap stream room setup with seeded catalog**: browse a seeded
   catalog (Sony WH-1000XM6, Logitech MX Master 3S, SGD pricing), select a
@@ -16,6 +16,14 @@ This repo currently implements the first three slices:
   control, a buyer-side livestream-style video placeholder, and reserved space
   for the AI work surface (actions / escalations / coach / log / memory) that
   later slices fill in.
+- **004 — DeepAgent auto-answers grounded product questions**: a LangChain
+  Stream Producer DeepAgent classifies new buyer comments and auto-posts a
+  transparent AI assistant reply only when a linked-product answer clears the
+  confidence + grounding gate. Needs `OPENAI_API_KEY`.
+- **006 — Escalate missing product facts to host**: appropriate product
+  questions the agent can't answer from linked facts or session memory become
+  host escalations (no invented buyer answer) that the host can answer/resolve
+  from the console.
 
 ## Tech stack
 
@@ -106,6 +114,20 @@ npm run dev      # http://localhost:3010
 4. The buyer view shows a livestream-style video placeholder (fallback for the
    buyer-visible WebRTC upgrade in slice 013).
 
+### 006 — Escalate missing product facts
+1. With `OPENAI_API_KEY` set, open the host console and a buyer view side by
+   side.
+2. As the buyer, ask a product question whose answer isn't in the seed facts —
+   e.g. *"Do you still have the blue one in stock?"* (stock by colour isn't a
+   linked fact).
+3. The buyer chat receives **no** AI answer. In the host console, an
+   **Escalations** card appears with the buyer's comment, the matched product,
+   and a compact reason.
+4. Type an answer in the card and click **Mark answered** → the card flips to
+   *Resolved* and shows your answer (and would persist for the stream).
+5. A clearly answerable question (e.g. *"Does the XM6 support LDAC?"*) still
+   auto-answers instead of escalating.
+
 ### Tests
 
 ```bash
@@ -124,9 +146,12 @@ src/
     api/
       rooms/route.ts               # create room + link lineup
       rooms/[roomId]/spotlight/    # set/clear spotlight product
-      comments/route.ts            # post a comment
+      comments/route.ts            # post a comment (triggers the DeepAgent)
+      escalations/[id]/route.ts    # host answers/resolves an escalation (006)
   components/                      # UI + realtime hooks
   lib/
+    streamProducerAgent.ts         # 004/006 DeepAgent: classify + decide
+    streamProducerProcessor.ts     # persist AI action / assistant reply / escalation
     supabase/{browser,server}.ts   # Supabase clients (publishable / secret)
     rooms.ts                       # server-side room data access
     types.ts                       # shared domain types

@@ -72,6 +72,8 @@ function buyerComment(body: string): Comment {
     body,
     language_label: "en",
     moderation_status: "visible",
+    ai_status: "processing",
+    reply_to_comment_id: null,
     created_at: now,
   };
 }
@@ -217,6 +219,40 @@ describe("runStreamProducerAgent", () => {
     expect(decision.actionType).toBe("ignore");
     expect(decision.buyerMessage).toBeNull();
     expect(decision.rationaleLabel).toBe("below_auto_reply_gate");
+  });
+
+  it("escalates a missing-detail linked product question without a buyer-facing answer", async () => {
+    const sony = catalogProduct({
+      id: "sony",
+      // No stock facts -> "do you have the blue one?" is not answerable.
+      stock: {},
+    });
+
+    const decision = await runStreamProducerAgent(
+      {
+        room,
+        comment: buyerComment("Do you still have the blue one in stock?"),
+        lineup: [lineupItem(sony)],
+        sessionMemories: [],
+      },
+      {
+        invokeDeepAgent: async () => ({
+          actionType: "escalate",
+          productId: "sony",
+          confidence: 0.4,
+          // Even if the model returns a buyer message, the gate must drop it.
+          buyerMessage: "AI assistant: Yes, the blue one is in stock.",
+          hostSummary: "Buyer asked about blue XM6 stock, not in linked facts.",
+          rationaleLabel: "missing_product_fact",
+          supportingFactIds: [],
+        }),
+      },
+    );
+
+    expect(decision.actionType).toBe("escalate");
+    expect(decision.productId).toBe("sony");
+    expect(decision.buyerMessage).toBeNull();
+    expect(decision.hostSummary).toContain("stock");
   });
 
   it("only exposes products linked to the active stream lineup as grounding context", () => {

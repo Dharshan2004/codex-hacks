@@ -223,6 +223,20 @@ function applyGroundingAndConfidenceGate(
     );
   }
 
+  // Escalations must never carry a buyer-facing message: the host answers, and
+  // the buyer sees no invented AI answer (issue 006, acceptance criterion 4).
+  if (decision.actionType === "escalate") {
+    return {
+      ...decision,
+      productId: decision.productId ?? null,
+      buyerMessage: null,
+      hostSummary:
+        decision.hostSummary.trim() ||
+        "Buyer asked a product question that is not covered by linked facts.",
+      confidence: clampConfidence(decision.confidence),
+    };
+  }
+
   if (decision.actionType !== "auto_reply") {
     return {
       ...decision,
@@ -293,7 +307,8 @@ async function invokeDeepAgents({
       "Before answering any product question, call lookup_linked_product_context.",
       "Auto-reply only for straightforward questions about one linked product when the answer is directly supported by returned fact ids or confirmed session memory.",
       "Never use facts outside the linked product context. Never invent prices, stock, warranty, compatibility, medical, legal, or guaranteed-result claims.",
-      "If the comment is not safely answerable from linked facts, return ignore for this MVP slice.",
+      "Escalate when the buyer asks a genuine, appropriate question about a linked product (for example stock, variant, warranty, refund, delivery, or promotion) but the answer is not present in the linked facts or confirmed session memory. For an escalation, set the matched productId when known, give a compact hostSummary naming the missing detail, and set buyerMessage to null. Do not guess the answer.",
+      "Ignore spam, social chatter, and questions about products that are not in the linked lineup.",
       "Buyer messages should be concise, friendly, and transparent that the answer is from the AI assistant.",
     ].join(" "),
   });

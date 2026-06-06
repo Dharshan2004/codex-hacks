@@ -57,6 +57,11 @@ export async function POST(request: Request) {
   const displayName =
     role === "buyer" ? (payload.displayName || "Guest").slice(0, 40) : null;
 
+  // Buyer comments are handed to the DeepAgent, so mark them "processing" up
+  // front. The frontend shows an "Agent answering…" indicator while a buyer
+  // comment is in this state; the processor flips it to "done" when finished.
+  const aiStatus = role === "buyer" ? "processing" : "none";
+
   const { data: comment, error: insertError } = await supabase
     .from("comments")
     .insert({
@@ -64,6 +69,7 @@ export async function POST(request: Request) {
       sender_role: role,
       buyer_display_name: displayName,
       body: text,
+      ai_status: aiStatus,
     })
     .select("*")
     .single();

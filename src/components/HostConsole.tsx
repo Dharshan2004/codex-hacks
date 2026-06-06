@@ -6,10 +6,12 @@ import { AiActionsPanel } from "@/components/AiActionsPanel";
 import { CameraPreview } from "@/components/CameraPreview";
 import { ChatTranscript } from "@/components/ChatTranscript";
 import { CommentComposer } from "@/components/CommentComposer";
+import { EscalationsPanel } from "@/components/EscalationsPanel";
 import { LiveBadge } from "@/components/LiveBadge";
 import { ReservedPanel } from "@/components/ReservedPanel";
 import { useRoomAiActions } from "@/components/useRoomAiActions";
 import { useRoomComments } from "@/components/useRoomComments";
+import { useRoomEscalations } from "@/components/useRoomEscalations";
 import { useRoomState } from "@/components/useRoomState";
 import type { LineupItem, RoomState } from "@/lib/types";
 import { formatPrice, totalStock } from "@/lib/utils";
@@ -23,6 +25,7 @@ export function HostConsole({ state }: { state: RoomState }) {
   const room = useRoomState(state.room);
   const { comments, status } = useRoomComments(room.id);
   const { actions } = useRoomAiActions(room.id);
+  const { escalations } = useRoomEscalations(room.id);
 
   const buyerUrl =
     typeof window !== "undefined"
@@ -59,11 +62,16 @@ export function HostConsole({ state }: { state: RoomState }) {
               AI work surface
             </h2>
             <AiActionsPanel actions={actions} lineup={lineup} />
+            <EscalationsPanel
+              escalations={escalations}
+              lineup={lineup}
+              comments={comments}
+            />
             <ReservedPanel
-              icon="⚠️"
-              title="Escalations & policy warnings"
-              issue="006 · 008"
-              hint="Questions needing your confirmation and risky-claim warnings."
+              icon="🛡️"
+              title="Policy-risk warnings"
+              issue="008"
+              hint="Risky or unsupported claims flagged for your review."
             />
             <ReservedPanel
               icon="💡"

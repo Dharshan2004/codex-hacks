@@ -1,70 +1,65 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { getBrowserSupabase } from "@/lib/supabase/browser";
-import type { Comment } from "@/lib/types";
+import type { Escalation } from "@/lib/types";
 
-// Subscribes to a room's comments: loads the existing transcript, then appends
-// new rows via Supabase Realtime. Returns the live-sorted comment list plus a
-// connection status useful for showing a "Live" indicator.
-export function useRoomComments(roomId: string) {
-  const [comments, setComments] = useState<Comment[]>([]);
+// Subscribes to a room's escalations (issue 006): loads existing rows, then
+// applies realtime INSERTs (new escalations) and UPDATEs (resolved by host).
+export function useRoomEscalations(roomId: string) {
+  const [escalations, setEscalations] = useState<Escalation[]>([]);
   const [status, setStatus] = useState<"connecting" | "live" | "error">(
     "connecting",
   );
+  const seen = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!roomId) return;
     const supabase = getBrowserSupabase();
     let cancelled = false;
 
-    // Upsert by id so realtime UPDATEs (e.g. ai_status flipping to "done")
-    // replace the existing row rather than appending a duplicate.
-    const upsert = (incoming: Comment[]) => {
-      setComments((prev) => {
-        const byId = new Map(prev.map((c) => [c.id, c]));
-        for (const c of incoming) {
-          if (c.moderation_status !== "visible") {
-            byId.delete(c.id);
-            continue;
-          }
-          byId.set(c.id, c);
+    // Upsert by id so an UPDATE replaces the existing row rather than appending.
+    const apply = (incoming: Escalation[]) => {
+      setEscalations((prev) => {
+        const byId = new Map(prev.map((e) => [e.id, e]));
+        for (const e of incoming) {
+          byId.set(e.id, e);
+          seen.current.add(e.id);
         }
         return Array.from(byId.values()).sort((a, b) =>
-          a.created_at.localeCompare(b.created_at),
+          b.created_at.localeCompare(a.created_at),
         );
       });
     };
 
     (async () => {
       const { data, error } = await supabase
-        .from("comments")
+        .from("escalations")
         .select("*")
         .eq("room_id", roomId)
-        .eq("moderation_status", "visible")
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false });
       if (cancelled) return;
       if (error) {
         setStatus("error");
         return;
       }
-      upsert((data ?? []) as Comment[]);
+      apply((data ?? []) as Escalation[]);
     })();
 
     const channel = supabase
-      .channel(`comments:${roomId}`)
+      .channel(`escalations:${roomId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
-          table: "comments",
+          table: "escalations",
           filter: `room_id=eq.${roomId}`,
         },
         (payload) => {
           if (payload.eventType === "DELETE") return;
-          upsert([payload.new as Comment]);
+          apply([payload.new as Escalation]);
         },
       )
       .subscribe((channelStatus) => {
@@ -84,5 +79,5 @@ export function useRoomComments(roomId: string) {
     };
   }, [roomId]);
 
-  return { comments, status };
+  return { escalations, status };
 }

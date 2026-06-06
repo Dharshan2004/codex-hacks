@@ -1,12 +1,11 @@
-// Applies the SQL migrations (in order) and the seed to a hosted Supabase
-// Postgres database. Reads SUPABASE_DB_URL from .env.local.
+// Applies SQL migrations (in order, once each) and the seed to a hosted
+// Supabase Postgres database. Reads SUPABASE_DB_URL from .env.local.
 //
 // Usage:  npm run db:push
 //
-// This is a lightweight alternative to the Supabase CLI for a solo demo: it
-// just runs each .sql file. Migrations are written to be re-runnable
-// (IF NOT EXISTS / idempotent seed), but `alter publication ... add table`
-// errors if the table is already in the publication — we tolerate that.
+// Each migration runs inside a transaction and is recorded in a
+// `schema_migrations` ledger, so re-running only applies new files. The seed is
+// idempotent (upsert by slug) and runs every time.
 
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -38,52 +37,65 @@ const client = new pg.Client({
   ssl: { rejectUnauthorized: false },
 });
 
-// Errors that are safe to ignore on re-run (object already exists).
-function isIgnorable(err) {
-  // 42710 duplicate_object (e.g. policy/table already in publication),
-  // 42P07 duplicate_table, 42P06 duplicate_schema, 42701 duplicate_column.
-  return ["42710", "42P07", "42P06", "42701"].includes(err.code);
+async function ensureLedger() {
+  await client.query(
+    `create table if not exists public.schema_migrations (
+       filename text primary key,
+       applied_at timestamptz not null default now()
+     );`,
+  );
 }
 
-async function runSqlFile(label, sql) {
-  // Run the whole file as one batch; on an ignorable duplicate error, retry
-  // statement-by-statement so the rest of the file still applies.
+async function appliedSet() {
+  const { rows } = await client.query(
+    "select filename from public.schema_migrations",
+  );
+  return new Set(rows.map((r) => r.filename));
+}
+
+async function applyMigration(file, sql) {
+  // Whole file in one transaction so a partial failure rolls back cleanly.
+  await client.query("begin");
   try {
     await client.query(sql);
-    console.log(`  ✓ ${label}`);
+    await client.query(
+      "insert into public.schema_migrations (filename) values ($1)",
+      [file],
+    );
+    await client.query("commit");
+    console.log(`  ✓ ${file}`);
   } catch (err) {
-    if (!isIgnorable(err)) throw err;
-    console.log(`  • ${label}: re-applying statement-by-statement…`);
-    const statements = sql
-      .split(/;\s*\n/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    for (const stmt of statements) {
-      try {
-        await client.query(stmt);
-      } catch (e) {
-        if (!isIgnorable(e)) throw e;
-      }
-    }
-    console.log(`  ✓ ${label} (idempotent)`);
+    await client.query("rollback");
+    throw new Error(`${file}: ${err.message}`);
   }
 }
 
 async function main() {
   console.log("→ Connecting to Supabase Postgres…");
   await client.connect();
+  await ensureLedger();
 
-  console.log("→ Applying migrations:");
+  const applied = await appliedSet();
   const files = readdirSync(migrationsDir)
     .filter((f) => f.endsWith(".sql"))
     .sort();
+
+  console.log("→ Applying migrations:");
+  let newCount = 0;
   for (const file of files) {
+    if (applied.has(file)) {
+      console.log(`  • ${file} (already applied)`);
+      continue;
+    }
     const sql = readFileSync(join(migrationsDir, file), "utf8");
-    await runSqlFile(file, sql);
+    await applyMigration(file, sql);
+    newCount += 1;
   }
+  if (newCount === 0) console.log("  (no new migrations)");
 
   console.log("→ Applying seed:");
-  await runSqlFile("seed.sql", readFileSync(seedPath, "utf8"));
+  await client.query(readFileSync(seedPath, "utf8"));
+  console.log("  ✓ seed.sql");
 
   await client.end();
   console.log("\n✓ Database is up to date.\n");
