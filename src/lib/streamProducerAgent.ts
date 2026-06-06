@@ -121,6 +121,9 @@ export async function runStreamProducerAgent(
   }
 
   const context = buildLinkedProductContext(input);
+  const preAgentIgnore = classifyPreAgentIgnore(input.comment.body, context);
+  if (preAgentIgnore) return preAgentIgnore;
+
   const rawDecision = await (options.invokeDeepAgent ?? invokeDeepAgents)({
     comment: input.comment,
     context,
@@ -196,6 +199,111 @@ export function buildLinkedProductContext({
       };
     }),
   };
+}
+
+const SPAM_KEYWORDS =
+  /\b(free followers|click here|buy now!!!|dm me|telegram|whatsapp)\b/;
+const ABUSE_WORDS =
+  /\b(fuck|fucking|shit|shitting|bitch|bitches|asshole|wtf|cunt|bastard|piss|pissing)\b/;
+const CHATTER_WORDS = new Set([
+  "hello",
+  "hi",
+  "hey",
+  "nice",
+  "stream",
+  "lol",
+  "wow",
+  "cool",
+  "love",
+  "thanks",
+  "thank",
+  "first",
+]);
+const QUESTION_SIGNAL =
+  /\?|\bhow\b|\b(what|which|when|where|why)\b|\b(price|cost|stock|available|support|work|ship|warranty|voucher|buy|size|color)\b/;
+const PRODUCT_NOUNS = new Set([
+  // Tech brands & devices
+  "airpods", "dyson", "galaxy", "ipad", "iphone", "magsafe", "oppo", "redmi", "samsung", "xiaomi",
+  "laptop", "phone", "smartphone", "tablet", "tv", "television", "monitor", "camera",
+  "headphone", "headphones", "earphone", "earphones", "earbuds", "speaker", "speakers",
+  "keyboard", "mouse", "charger", "cable", "adapter",
+  // Footwear
+  "shoe", "shoes", "sneaker", "sneakers", "boot", "boots", "sandal", "sandals", "heel", "heels",
+  "slipper", "slippers",
+  // Clothing
+  "shirt", "shirts", "dress", "jeans", "pants", "jacket", "coat", "blouse", "skirt", "shorts",
+  "hoodie", "sweater",
+  // Bags & accessories
+  "bag", "bags", "wallet", "purse", "handbag", "backpack", "watch", "watches", "belt",
+  "sunglasses", "glasses",
+  // Home goods
+  "sofa", "couch", "mattress", "pillow", "blanket", "curtain", "lamp", "furniture",
+  // Food & beverage
+  "food", "drink", "coffee", "tea", "snack",
+  // Other common products
+  "toy", "book", "game", "bicycle", "bike", "helmet",
+]);
+
+export function classifyCommentVisibility(
+  body: string,
+  context: LinkedProductContext,
+): "hidden" | null {
+  return classifyPreAgentIgnore(body, context) !== null ? "hidden" : null;
+}
+
+export function classifyBodyModeration(body: string): "hidden" | null {
+  const normalized = body.toLowerCase();
+  const words = normalized.match(/[a-z0-9]+/g) ?? [];
+
+  if (/https?:\/\//.test(normalized) || SPAM_KEYWORDS.test(normalized) || ABUSE_WORDS.test(normalized)) {
+    return "hidden";
+  }
+
+  if (
+    words.length > 0 &&
+    words.length <= 5 &&
+    !QUESTION_SIGNAL.test(normalized) &&
+    words.every((word) => CHATTER_WORDS.has(word))
+  ) {
+    return "hidden";
+  }
+
+  return null;
+}
+
+function classifyPreAgentIgnore(
+  body: string,
+  context: LinkedProductContext,
+): StreamProducerDecision | null {
+  const normalized = body.toLowerCase();
+  const words = normalized.match(/[a-z0-9]+/g) ?? [];
+
+  const moderation = classifyBodyModeration(body);
+  if (moderation === "hidden") {
+    if (/https?:\/\//.test(normalized) || SPAM_KEYWORDS.test(normalized)) {
+      return ignoredDecision("spam", "Ignored an obvious spam or promotional comment.");
+    }
+    return ignoredDecision("social_chatter", "Ignored a social chatter comment.");
+  }
+
+  const linkedTerms = new Set(
+    context.products.flatMap((product) =>
+      [product.name, product.brand, product.category, product.slug]
+        .filter((value): value is string => Boolean(value))
+        .flatMap((value) => value.toLowerCase().match(/[a-z0-9]+/g) ?? [])
+        .filter((word) => word.length > 2),
+    ),
+  );
+  const mentionsLinkedProduct = words.some((word) => linkedTerms.has(word));
+  const mentionsOutsideProduct = words.some((word) => PRODUCT_NOUNS.has(word));
+  if (QUESTION_SIGNAL.test(normalized) && mentionsOutsideProduct && !mentionsLinkedProduct) {
+    return ignoredDecision(
+      "unlinked_product",
+      "Ignored a question about a product outside the active stream lineup.",
+    );
+  }
+
+  return null;
 }
 
 function applyGroundingAndConfidenceGate(

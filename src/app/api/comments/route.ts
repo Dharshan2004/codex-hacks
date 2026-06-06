@@ -1,8 +1,13 @@
 import { after, NextResponse } from "next/server";
 
+import {
+  buildLinkedProductContext,
+  classifyCommentVisibility,
+} from "@/lib/streamProducerAgent";
 import { processNewBuyerComment } from "@/lib/streamProducerProcessor";
+import { getLineup } from "@/lib/rooms";
 import { getServiceSupabase } from "@/lib/supabase/server";
-import type { Comment, SenderRole } from "@/lib/types";
+import type { Comment, ModerationStatus, Room, SenderRole } from "@/lib/types";
 
 const MAX_BODY_LENGTH = 500;
 
@@ -44,7 +49,7 @@ export async function POST(request: Request) {
   // Ensure the room exists (and is live) before accepting comments.
   const { data: room, error: roomError } = await supabase
     .from("rooms")
-    .select("id, status")
+    .select("*")
     .eq("id", roomId)
     .maybeSingle();
   if (roomError) {
@@ -57,6 +62,17 @@ export async function POST(request: Request) {
   const displayName =
     role === "buyer" ? (payload.displayName || "Guest").slice(0, 40) : null;
 
+  let moderationStatus: ModerationStatus = "visible";
+  if (role === "buyer") {
+    const lineup = await getLineup(roomId);
+    const context = buildLinkedProductContext({
+      room: room as Room,
+      lineup,
+      sessionMemories: [],
+    });
+    moderationStatus = classifyCommentVisibility(text, context) ?? "visible";
+  }
+
   const { data: comment, error: insertError } = await supabase
     .from("comments")
     .insert({
@@ -64,6 +80,7 @@ export async function POST(request: Request) {
       sender_role: role,
       buyer_display_name: displayName,
       body: text,
+      moderation_status: moderationStatus,
     })
     .select("*")
     .single();
