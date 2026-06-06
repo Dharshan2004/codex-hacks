@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { processNewBuyerComment } from "@/lib/streamProducerProcessor";
 import { getServiceSupabase } from "@/lib/supabase/server";
@@ -75,11 +75,14 @@ export async function POST(request: Request) {
   }
 
   if (role === "buyer") {
-    try {
-      await processNewBuyerComment((comment as Comment).id);
-    } catch (error) {
-      console.error("Stream Producer DeepAgent failed to process comment", error);
-    }
+    const commentId = (comment as Comment).id;
+    after(async () => {
+      try {
+        await processNewBuyerComment(commentId);
+      } catch (error) {
+        console.error("Stream Producer DeepAgent failed to process comment", error);
+      }
+    });
   }
 
   return NextResponse.json({ comment: comment as Comment }, { status: 201 });

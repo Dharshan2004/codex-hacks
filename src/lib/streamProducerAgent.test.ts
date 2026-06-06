@@ -27,7 +27,7 @@ function catalogProduct(overrides: Partial<CatalogProduct>): CatalogProduct {
     image_emoji: null,
     official_specs: [],
     variants: [],
-      stock: {},
+    stock: {},
     seller_notes: null,
     shipping_notes: null,
     return_notes: null,
@@ -144,6 +144,72 @@ describe("runStreamProducerAgent", () => {
           hostSummary: "Candidate answer was below the confidence gate.",
           rationaleLabel: "grounded_product_fact",
           supportingFactIds: ["sony:official_spec:0"],
+        }),
+      },
+    );
+
+    expect(decision.actionType).toBe("ignore");
+    expect(decision.buyerMessage).toBeNull();
+    expect(decision.rationaleLabel).toBe("below_auto_reply_gate");
+  });
+
+  it("does not auto-answer when the DeepAgent points at an unlinked product", async () => {
+    const sony = catalogProduct({
+      id: "sony",
+      official_specs: [
+        { label: "Audio formats", value: "SBC, AAC, LDAC, LC3" },
+      ],
+    });
+
+    const decision = await runStreamProducerAgent(
+      {
+        room,
+        comment: buyerComment("Does the XM6 support LDAC?"),
+        lineup: [lineupItem(sony)],
+        sessionMemories: [],
+      },
+      {
+        invokeDeepAgent: async () => ({
+          actionType: "auto_reply",
+          productId: "logitech",
+          confidence: 0.95,
+          buyerMessage: "AI assistant: Yes, it works on glass.",
+          hostSummary: "Tried to answer with an unlinked product.",
+          rationaleLabel: "grounded_product_fact",
+          supportingFactIds: ["logitech:official_spec:0"],
+        }),
+      },
+    );
+
+    expect(decision.actionType).toBe("ignore");
+    expect(decision.buyerMessage).toBeNull();
+    expect(decision.rationaleLabel).toBe("unlinked_product");
+  });
+
+  it("does not auto-answer without supporting linked fact ids", async () => {
+    const sony = catalogProduct({
+      id: "sony",
+      official_specs: [
+        { label: "Audio formats", value: "SBC, AAC, LDAC, LC3" },
+      ],
+    });
+
+    const decision = await runStreamProducerAgent(
+      {
+        room,
+        comment: buyerComment("Does the XM6 support LDAC?"),
+        lineup: [lineupItem(sony)],
+        sessionMemories: [],
+      },
+      {
+        invokeDeepAgent: async () => ({
+          actionType: "auto_reply",
+          productId: "sony",
+          confidence: 0.95,
+          buyerMessage: "AI assistant: Yes, the WH-1000XM6 supports LDAC.",
+          hostSummary: "Candidate answer omitted supporting facts.",
+          rationaleLabel: "grounded_product_fact",
+          supportingFactIds: [],
         }),
       },
     );

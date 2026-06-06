@@ -259,10 +259,19 @@ async function invokeDeepAgents({
   comment,
   context,
 }: DeepAgentRunRequest): Promise<unknown> {
-  const [{ createDeepAgent }, { tool, toolStrategy }] = await Promise.all([
-    import("deepagents"),
-    import("langchain"),
-  ]);
+  const [{ createDeepAgent }, { tool, toolStrategy }, { ChatOpenAI }] =
+    await Promise.all([
+      import("deepagents"),
+      import("langchain"),
+      import("@langchain/openai"),
+    ]);
+
+  const modelName = (
+    process.env.STREAM_PRODUCER_MODEL || DEFAULT_STREAM_PRODUCER_MODEL
+  ).replace(/^openai:/, "");
+  const model = new ChatOpenAI({
+    model: modelName,
+  });
 
   const lookupLinkedProductContext = tool(
     async () => JSON.stringify(context),
@@ -275,7 +284,7 @@ async function invokeDeepAgents({
   );
 
   const agent = createDeepAgent({
-    model: process.env.STREAM_PRODUCER_MODEL || DEFAULT_STREAM_PRODUCER_MODEL,
+    model,
     tools: [lookupLinkedProductContext],
     responseFormat: toolStrategy(streamProducerDecisionJsonSchema),
     systemPrompt: [
