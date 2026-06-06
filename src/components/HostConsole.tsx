@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-import { ActivityLog } from "@/components/ActivityLog";
-import { AiActionsPanel } from "@/components/AiActionsPanel";
 import { CameraPreview } from "@/components/CameraPreview";
 import { ChatTranscript } from "@/components/ChatTranscript";
 import { CommentComposer } from "@/components/CommentComposer";
@@ -13,7 +11,6 @@ import { LiveBadge } from "@/components/LiveBadge";
 import { SalesCoachPanel } from "@/components/SalesCoachPanel";
 import { SessionMemoryPanel } from "@/components/SessionMemoryPanel";
 import { TranscriptionPanel } from "@/components/TranscriptionPanel";
-import { useRoomAiActions } from "@/components/useRoomAiActions";
 import { useRoomComments } from "@/components/useRoomComments";
 import { useRoomEscalations } from "@/components/useRoomEscalations";
 import { useRoomHostSpeech } from "@/components/useRoomHostSpeech";
@@ -33,7 +30,6 @@ export function HostConsole({ state }: { state: RoomState }) {
   const { lineup } = state;
   const room = useRoomState(state.room);
   const { comments, status } = useRoomComments(room.id);
-  const { actions } = useRoomAiActions(room.id);
   const { escalations } = useRoomEscalations(room.id);
   const { memories } = useRoomMemories(room.id);
   const { segments } = useRoomHostSpeech(room.id);
@@ -133,7 +129,6 @@ export function HostConsole({ state }: { state: RoomState }) {
             <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
               AI work surface
             </h2>
-            <AiActionsPanel actions={actions} lineup={lineup} />
             <EscalationsPanel
               escalations={escalations}
               lineup={lineup}
@@ -146,7 +141,6 @@ export function HostConsole({ state }: { state: RoomState }) {
               status={coachStatus}
               errorMessage={coachLoadError ?? coachTickError}
             />
-            <ActivityLog actions={actions} comments={comments} />
           </div>
         </section>
 
